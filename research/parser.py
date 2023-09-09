@@ -1,0 +1,35 @@
+import argparse
+
+arg_parser = argparse.ArgumentParser()
+arg_parser.add_argument("--BACKTEST_TRADE_STRATEGY", default="")
+arg_parser.add_argument("--TRADE_STRATEGYS", nargs="+", default=[])
+arg_parser.add_argument(
+    "--TARGET_TRANSFORM", choices=["", "normal", "uniform", "none"], default=""
+)
+arg_parser.add_argument("--TRAIN_DATE_FROM", default="", type=str)
+arg_parser.add_argument("--TRAIN_DATE_TO", default="", type=str)
+arg_parser.add_argument("--TEST_DATE_FROM", default="2021-1-1", type=str)
+arg_parser.add_argument("--FORWARD_WINDOW", default="6M", type=str)
+arg_parser.add_argument("--TEST_DATE_TO", default="", type=str)
+arg_parser.add_argument("--CONFIG_NAME", default="baseline.yaml")
+arg_parser.add_argument("--model_dir", default="")
+arg_parser.add_argument("--tag", default="")
+arg_parser.add_argument("--plot", action="store_true")
+arg_parser.add_argument("--no-neptune", action="store_true")
+arg_parser.add_argument("--study_name", default="")
+arg_parser.add_argument("--fake-data", action="store_true")
+arg_parser.add_argument("--multi-process", action="store_true")
+arg_parser.add_argument("--max-num-trials", default=100, type=float)
+arg_parser.add_argument("--bar-window", default=15, type=int)
+arg_parser.add_argument("--future", action="store_true")
+arg_parser.add_argument("--risk-level", default=-1, type=float)
+arg_parser.add_argument("--cash", default=10_000_000, type=float)
+arg_parser.add_argument(
+    "--side", default="BOTH", type=str, choices=["BOTH", "LONG_ONLY", "SHORT_ONLY"]
+)
+arg_parser.add_argument("--eval", action="store_true")
+arg_parser.add_argument("--study_id", default="")
+arg_parser.add_argument("--trial_id", default="0")
+arg_parser.add_argument("--optimize_symbol", default="")
+arg_parser.add_argument("--optimize_target", default="Return (Ann.) [%]")
+arg_parser.add_argument("--fee", default=1e-3, type=float)
