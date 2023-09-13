@@ -10,6 +10,7 @@ from typing import TypedDict
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
+import research.orderbook_strategies.utils.helper as helper
 from research.orderbook_strategies.utils.helper import *
 from research.orderbook_strategies.utils.product_info import product_info
 
@@ -111,9 +112,14 @@ class factor_template(object):
 
     params = OrderedDict([("period", np.power(2, range(10, 13)))])
 
-    def formula(self):
+    def __call__(self, data, *args):
+        res = self.formula(data, *args)
+        res = pd.Series(res, name=self.factor_name).fillna(method="ffill")
+        res = res.fillna(0)
+        return np.asarray(res)
+    def formula(self, data, *args):
         pass
-
+    
     def form_info(self):
         return inspect.getsource(self.formula)
 
@@ -136,9 +142,29 @@ class factor_template(object):
     def __str__(self):
         return self.info()
 
-
+def add_trades_features(date_str, product, period_list=[], overwrite=False):
+    try:
+        data = get_data(product, date_str)
+        
+    except Exception as e:
+        print("error in add_trades_features", product, date_str)
+        
 def merge_metric_trades_and_construct_indicators(date_str, product, signal_list=[], float32=True, float16=False, overwrite=True):
     try:
+        skip = True
+        for signal in signal_list:
+            keys = list(signal.params.keys())
+            for cartesian in itertools.product(*signal.params.values()):
+                signal_name = signal.factor_name
+                kwargs = {}
+                for i in range(len(cartesian)):
+                    kwargs[keys[i]] = str(cartesian[i])
+                signal_name = signal_name.format(**kwargs)
+                signal_path = SIGNAL_PATH / product / signal_name / f"{date_str}.pkl"
+                if overwrite or not signal_path.exists():
+                    skip = False
+        if skip:
+            return
         trades_data = get_trades_data(product, date_str)
         assert trades_data is not None, f"trades data is None for {product} {date_str}"
         metric_data = get_metrics_data(product, date_str)
@@ -194,7 +220,7 @@ def merge_metric_trades_and_construct_indicators(date_str, product, signal_list=
                     signal_name = signal_name.replace(keys[i], str(cartesian[i]))
                 signal_path = SIGNAL_PATH / product / signal_name / f"{date_str}.pkl"
                 if overwrite or (signal_name not in merged_data and not signal_path.exists()):
-                    merged_data[signal_name] = signal.formula(merged_data, *cartesian)
+                    merged_data[signal_name] = signal(merged_data, *cartesian)
                     signal_names.append(signal_name)
 
         data = get_data(product, date_str, columns=["time"])
@@ -235,8 +261,10 @@ def build_composite_signal(
         date_str = find_date(file_name_str)
         for cartesian in itertools.product(*signal.params.values()):
             signal_name = signal.factor_name
+            kwargs = {}
             for i in range(len(cartesian)):
-                signal_name = signal_name.replace(keys[i], str(cartesian[i]))
+                kwargs[keys[i]] = str(cartesian[i])
+            signal_name = signal_name.format(**kwargs)
             path = SIGNAL_PATH / product / signal_name / "{}.pkl".format(date_str)
             path.parent.mkdir(parents=True, exist_ok=True)
             if not path.exists() or overwrite:
@@ -255,12 +283,14 @@ def build_composite_signal(
         assert date_str is not None, "invalid date file name: " + file_name_str
         for cartesian in itertools.product(*signal.params.values()):
             signal_name = signal.factor_name
+            kwargs = {}
             for i in range(len(cartesian)):
-                signal_name = signal_name.replace(keys[i], str(cartesian[i]))
+                kwargs[keys[i]] = str(cartesian[i])
+            signal_name = signal_name.format(**kwargs)
             if (product, signal_name, date_str) in signals_needed:
                 path = SIGNAL_PATH / product / signal_name / "{}.pkl".format(date_str)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                S = signal.formula(data, *cartesian)
+                S = signal(data, *cartesian)
                 assert len(S) == data.shape[0], (
                     "signal length mismatch: " + signal_name + " " + date_str
                 )
@@ -828,9 +858,13 @@ def get_signal_pnl_for_threhold_strategy(
             "ret",
         ],
     )
-    assert data is not None, "get_data return None"
+    if data is None:
+        print("warning: get_data None at {} {}".format(file_or_date, product))
+        return []
     S = get_signal(product, signal_name, file_or_date)
-    assert S is not None, "get_signal return None"
+    if S is None:
+        print("warning: get_signal None at {} {}".format(file_or_date, product))
+        return []
     pred = S
     pred = np.asarray(pred[data["good"]])
     atr = data["atr.4096"][data["good"]].reset_index(drop=True)
@@ -872,41 +906,41 @@ def get_hft_summary(daily_result: List[List[DailyResult]]) -> HFTSummary:
         daily_results["open"].astype(str) + "_" + daily_results["close"].astype(str)
     )
     daily_num_per_thre = daily_results.pivot_table(
-        values="num", columns="open_close", index="date"
+        values="num", columns="open_close", index="date", dropna=False
     )
     dates = list(sorted(daily_num_per_thre.index))
     daily_pnl_per_thre = daily_results.pivot_table(
-        values="final_pnl", columns="open_close", index="date"
+        values="final_pnl", columns="open_close", index="date", dropna=False
     )
     daily_ret_per_thre = daily_results.pivot_table(
-        values="ret", columns="open_close", index="date"
+        values="ret", columns="open_close", index="date", dropna=False
     )
     daily_pf_per_thre = daily_results.pivot_table(
-        values="profit_factor", columns="open_close", index="date"
+        values="profit_factor", columns="open_close", index="date", dropna=False
     )
     daily_win_rate_thre = daily_results.pivot_table(
-        values="win_rate", columns="open_close", index="date"
+        values="win_rate", columns="open_close", index="date", dropna=False
     )
     daily_sp1_per_thre = daily_results.pivot_table(
-        values="ic.256", columns="open_close", index="date"
+        values="ic.256", columns="open_close", index="date", dropna=False
     )
     
     daily_sp2_per_thre = daily_results.pivot_table(
-        values="ic.512", columns="open_close", index="date"
+        values="ic.512", columns="open_close", index="date", dropna=False
     )
     
     daily_sp3_per_thre = daily_results.pivot_table(
-        values="ic.1024", columns="open_close", index="date"
+        values="ic.1024", columns="open_close", index="date", dropna=False
     )
     
     daily_sp4_per_thre = daily_results.pivot_table(
-        values="ic.2048", columns="open_close", index="date"
+        values="ic.2048", columns="open_close", index="date", dropna=False
     )
     open_thre = daily_results.pivot_table(
-        values="open", columns="open_close", index="date"
+        values="open", columns="open_close", index="date", dropna=False
     ).iloc[0]
     close_thre = daily_results.pivot_table(
-        values="close", columns="open_close", index="date"
+        values="close", columns="open_close", index="date", dropna=False
     ).iloc[0]
     daily_hold_len_per_thre = daily_results.pivot_table(
         values="hold_len", columns="open_close", index="date"
@@ -1055,7 +1089,6 @@ def get_signal_stat(
             reverse=reverse,
             tranct=tranct,
             max_spread=max_spread,
-            tranct_ratio=tranct_ratio,
             atr_filter=atr_filter,
         )
         daily_result: List[List[DailyResult]] = compute(
@@ -1063,20 +1096,35 @@ def get_signal_stat(
         )[0]
     train_result = []
     test_result = []
-    for items in daily_result:
-        daily_res = items[0]
-        date_str = daily_res["date"].strftime("%Y-%m-%d")
-        if date_str in train_dates:
-            train_result.append(items)
-        if test_dates is not None and date_str in test_dates:
-            test_result.append(items)
-
-    train_stat = get_hft_summary(train_result)
-    if test_dates:
-        test_stat = get_hft_summary(test_result)
-        return train_stat, test_stat
-    else:
-        return train_stat
+    try:
+        for items in daily_result:
+            if len(items) == 0:
+                continue
+            daily_res = items[0]
+            date_str = daily_res["date"].strftime("%Y-%m-%d")
+            if date_str in train_dates:
+                train_result.append(items)
+            if test_dates is not None and date_str in test_dates:
+                test_result.append(items)
+        if len(train_result) > 0:
+            train_stat = get_hft_summary(train_result)
+        else:
+            train_stat = None
+    
+        if test_dates:
+            if len(test_result) > 0:
+                test_stat = get_hft_summary(test_result)
+            else:
+                test_stat = None
+            return train_stat, test_stat
+        else:
+            return train_stat
+    except Exception as e:
+        print("Error in get_signal_stat: {} {}, msg={}".format(signal_name, product, traceback.format_exc()))
+        if test_dates:
+            return None, None
+        return None
+        
 
 
 SignalTrainTestStat = TypedDict(
@@ -1092,7 +1140,6 @@ def evaluate_signal(
     split_str="2018",
     tranct=1.1e-4,
     max_spread=0.61,
-    tranct_ratio=True,
     atr_filter=0,
     save_path="signal_result_atr",
     reverse=0,
@@ -1108,13 +1155,15 @@ def evaluate_signal(
         split_str (str, optional): _description_. Defaults to "2018".
         tranct (_type_, optional): _description_. Defaults to 1.1e-4.
         max_spread (float, optional): _description_. Defaults to 0.61.
-        tranct_ratio (bool, optional): _description_. Defaults to True.
         atr_filter (int, optional): _description_. Defaults to 0.
         save_path (str, optional): _description_. Defaults to "signal result".
         reverse (int, optional): _description_. Defaults to 0.
     """
     skip_evaluate = True
-    signal_name = signal + "." + str(period)  ## signal name, with period
+    if period is not None:
+        signal_name = signal + "." + str(period)  ## signal name, with period
+    else:
+        signal_name = signal
     if reverse >= 0:
         path = SIGNAL_RESULTS_PATH / save_path / signal_name / product / "trend.pkl"
         if not path.exists():
@@ -1125,8 +1174,9 @@ def evaluate_signal(
             skip_evaluate = False
     if skip_evaluate and not overwrite:
         return
-    
+        
     all_signal = auto_get_alldates_signal(signal_name, product)
+
     open_list = np.quantile(
         abs(all_signal),
         np.append(np.linspace(0.8, 0.99, 5), np.linspace(0.991, 0.999, 5)),
@@ -1164,10 +1214,12 @@ def evaluate_signal(
                 reverse=1,
                 tranct=tranct,
                 max_spread=max_spread,
-                tranct_ratio=tranct_ratio,
                 atr_filter=atr_filter,
                 test_dates=test_samples,
             )
+            if train_stat is None or test_stat is None:
+                print("error: not train/test results for product {} and signal {}. Possible reason: no data".format(product, signal_name))
+                return
             for key, value in meta.items():
                 train_stat["final_result"][key] = value
 
@@ -1215,10 +1267,12 @@ def evaluate_signal(
                 reverse=-1,
                 tranct=tranct,
                 max_spread=max_spread,
-                tranct_ratio=tranct_ratio,
                 atr_filter=atr_filter,
                 test_dates=test_samples,
             )
+            if train_stat is None or test_stat is None:
+                print("error: not train/test results for product {} and signal {}. Possible reason: no data".format(product, signal_name))
+                return
             for key, value in meta.items():
                 train_stat["final_result"][key] = value
 
@@ -1363,46 +1417,29 @@ def get_signal_performance_result(
         trend_signal_result, ("signal", "num", "trainSharpe", "testSharpe"), trainSharpe是在product上面mean
         reverse_signal_result
     """
-    trend_signal_result = pd.DataFrame(
-        data=OrderedDict(
-            [
-                ("signal", all_period_signal),
-                ("reverse", 1),
-                ("num_good_product", 0),
-                ("trainSharpe", 0),
-                ("testSharpe", 0),
-                ("trainAvgDailyTradeNum", 0),
-                ("testAvgDailyTradeNum", 0),
-            ]
-        )
-    )
-    reverse_signal_result = pd.DataFrame(
-        data=OrderedDict(
-            [
-                ("signal", all_period_signal),
-                ("reverse", -1),
-                ("num_good_product", 0),
-                ("trainSharpe", 0),
-                ("testSharpe", 0),
-                ("trainAvgDailyTradeNum", 0),
-                ("testAvgDailyTradeNum", 0),
-                ("avgTrainRet", 0),
-                ("avgTestRet", 0),
-            ]
-        )
-    )
+    trend_signal_result = []
+    daily_ret = {}
+    reverse_signal_result = []
+    
     n_signal = len(all_period_signal)  ## number of all signals
     train_sharpe = np.zeros(len(product_list))
     test_sharpe = np.zeros(len(product_list))
     train_ret = np.zeros(len(product_list))
     test_ret = np.zeros(len(product_list))
+    test_total_ret = np.zeros(len(product_list))
+    train_total_ret = np.zeros(len(product_list))
     for k in range(n_signal):
         signal_name = all_period_signal[k]
+        daily_ret[signal_name] = {}
         for direction in directions:
+            daily_ret[signal_name][direction] = {}
             num_good_products = 0
             good_train_num = 0
             good_test_num = 0
             num_good_stratey = 0
+            good_product = []
+            port_train_pnl = []
+            port_test_pnl = []
             for product in product_list:
                 p = (
                     SIGNAL_RESULTS_PATH
@@ -1445,6 +1482,9 @@ def get_signal_performance_result(
                     
                     train_ret[num_good_products] = np.nanmean(train_pnl)
                     test_ret[num_good_products] = np.nanmean(test_pnl)
+                    
+                    train_total_ret[num_good_products] = np.nansum(train_pnl)
+                    test_total_ret[num_good_products] = np.nansum(test_pnl)
 
                     train_num = train_stat["daily.num"].loc[:, good_strat].mean().mean()
 
@@ -1456,59 +1496,56 @@ def get_signal_performance_result(
                     good_train_num += train_num
                     # print(product, "train sharpe ", sharpe(train_pnl), "test sharpe ", sharpe(test_pnl))
                     num_good_products = num_good_products + 1
-                if num_good_products > 0:  ## if there are any good products
-                    if direction == "trend":
-                        trend_signal_result.loc[
-                            k,
-                            (
-                                "signal",
-                                "num_good_product",
-                                "trainSharpe",
-                                "testSharpe",
-                                "trainAvgDailyTradeNum",
-                                "testAvgDailyTradeNum",
-                                "sum_good_strat",
-                                'avgTrainRet',
-                                "avgTestRet"
-                            ),
-                        ] = (
-                            signal_name,
-                            num_good_products,
-                            np.mean(train_sharpe[:num_good_products]),
-                            np.mean(test_sharpe[:num_good_products]),
-                            good_train_num,
-                            good_test_num,
-                            num_good_stratey,
-                            np.mean(train_ret[:num_good_products]),
-                            np.mean(test_ret[:num_good_products]),
-                        )
+                    good_product.append(product)
+                    daily_ret[signal_name][direction][product] = {"train_pnl": train_pnl, "test_pnl": test_pnl}
+                    
+            if num_good_products > 0:  ## if there are any good products
+                if direction == "trend":
+                    signal_p = reverse_signal_result
+                else:
+                    signal_p = trend_signal_result
+                port_test_pnl = None
+                port_train_pnl = None
+                sharpe_list = []
+                for good_p in good_product:
+                    daily_train_pnl = daily_ret[signal_name][direction][good_p]["train_pnl"]
+                    good_p_sharpe = sharpe(daily_train_pnl)
+                    sharpe_list.append(good_p_sharpe)
+                    daily_test_pnl = daily_ret[signal_name][direction][good_p]["test_pnl"]
+                    if port_train_pnl is None:
+                        port_train_pnl = daily_train_pnl * good_p_sharpe
+                        port_test_pnl = daily_test_pnl * good_p_sharpe
                     else:
-                        reverse_signal_result.loc[
-                            k,
-                            (
-                                "signal",
-                                "num_good_product",
-                                "trainSharpe",
-                                "testSharpe",
-                                "trainAvgDailyTradeNum",
-                                "testAvgDailyTradeNum",
-                                'avgTrainRet',
-                                "avgTestRet"
-                            ),
-                        ] = (
-                            signal_name,
-                            num_good_products,
-                            np.mean(train_sharpe[:num_good_products]),
-                            np.mean(test_sharpe[:num_good_products]),
-                            good_train_num,
-                            good_test_num,
-                            np.mean(train_ret[:num_good_products]),
-                            np.mean(test_ret[:num_good_products]),
-                        )
+                        port_train_pnl.add(daily_train_pnl * good_p_sharpe, fill_value=0)
+                        port_test_pnl.add(daily_test_pnl * good_p_sharpe, fill_value=0)
+                port_test_pnl /= sum(sharpe_list)
+                port_train_pnl /= sum(sharpe_list)
+                metric = {}
+                metric["signal"] = signal_name
+                metric["reverse"] = direction
+                metric["num_good_product"] = num_good_products
+                metric["good_product"] = ",".join(good_product)
+                metric["good_product_sharpe"] = ",".join(map(lambda x: str(round(x, 2)), sharpe_list))
+                metric["trainSharpe"] = np.mean(train_sharpe[:num_good_products])
+                metric["testSharpe"] = np.mean(test_sharpe[:num_good_products])
+                metric["trainSharpeV2"] = sharpe(port_train_pnl)
+                metric["testSharpeV2"] = sharpe(port_test_pnl)
+                metric["trainAvgDailyTradeNum"] = good_train_num
+                metric["testAvgDailyTradeNum"] = good_test_num
+                metric["sum_good_strat"] = num_good_stratey
+                metric["avgTrainRet"] = np.mean(train_ret[:num_good_products])
+                metric["avgTestRet"] = np.mean(test_ret[:num_good_products])
+                metric["trainReturn"] = np.mean(train_total_ret[:num_good_products])
+                metric["testReturn"] = np.mean(test_total_ret[:num_good_products])
+                signal_p.append(metric)
+            else:
+                print("no good product for {} {}".format(signal_name, direction))
+
     return OrderedDict(
         [
-            ("trend.signal.stat", trend_signal_result),
-            ("reverse.signal.stat", reverse_signal_result),
+            ("trend.signal.stat", pd.DataFrame(trend_signal_result)),
+            ("reverse.signal.stat", pd.DataFrame(reverse_signal_result)),
+            ("daily.ret", daily_ret),
         ]
     )
 
@@ -1602,16 +1639,14 @@ def quick_roc_test(signal_name, product, N_threshold=13):
     results["threshold"] = thre
     sig = S.reshape(-1, 1)
     for reverse in [-1, 1]:
-        if reverse == 1:
-            hold = sig > thre.reshape(1, -1)  # (N, K)
-        else:
-            hold = sig < thre.reshape(1, -1)
+        hold = sig > thre.reshape(1, -1)  # (N, K)
+        if reverse == -1:
+            future_ret_stack = future_ret_stack * -1
         pnl = np.where(hold, future_ret_stack, 0)
         wins = (pnl > 0).sum(axis=0)
         losses = (pnl < 0).sum(axis=0)
         total_profit = np.where(pnl > 0, pnl, 0).sum(axis=0)
         total_loss = np.where(pnl < 0, pnl, 0).sum(axis=0)
-
         avg_profit = total_profit / wins
         avg_loss = total_loss / losses
 
@@ -1626,3 +1661,115 @@ def quick_roc_test(signal_name, product, N_threshold=13):
             results["short_pf"] = profit_rate
             results["short_wr"] = win_rate
     return results
+
+
+
+
+def single_factor_full_analysis(product_list, factor, plot_ts=True, plot_hist=True, backtest=True):
+    import statsmodels.tsa.stattools as ts
+    import scipy
+    import seaborn as sns
+    from tqdm.notebook import tqdm
+    import traceback
+    periods = factor.params["period"]
+    signal_name_format = factor.factor_name
+    all_product_signal_periods = {}
+    for period in periods:
+        signal_name = signal_name_format.format(period=period)
+        all_product_signal_periods[period] = helper.get_signal_data(product_list, signal_name)
+        
+    if plot_ts:
+        print("---- Time-Series EDA")
+        for period in periods:
+            f, axes = plt.subplots(len(product_list), 1, figsize=(5 * len(product_list), 10))
+            signal_name = signal_name_format.format(period=period)
+            for i, product in enumerate(product_list):
+                arr = all_product_signal_periods[period][product]
+                
+                T = len(arr)
+
+                arr = arr[np.arange(0, T, period)]
+                axes[i].plot(arr)
+                axes[i].set_title(product + "-" + signal_name)
+                _, p_val, _, _, _ = ts.adfuller(arr, maxlag=int(pow(len(arr)-1,(1/3))), regression='ct', autolag=None)
+                
+                mean = np.nanmean(arr)
+                std = np.nanmean(arr)
+                min_val = np.nanmin(arr)
+                max_val = np.nanmax(arr)
+                summary_text = f"Mean: {mean:.6f}\nStd: {std:.6f}\nMin: {min_val:.4f}\nMax: {max_val:.4f}\nAdFullerPvalue: {p_val: .2%}\n"
+                axes[i].text(0.8, 0.9, summary_text, transform=axes[i].transAxes, ha='center', va='bottom',
+                        bbox={'facecolor': 'white', 'alpha': 0.8, 'pad': 10})
+            f.show()
+            
+    if plot_hist:
+        print("---- Hist EDA")
+        for period in periods:
+            f, axes = plt.subplots(1, len(product_list), figsize=(20, 5))
+            signal_name = signal_name_format.format(period=period)
+            for i, product in enumerate(product_list):
+                arr = all_product_signal_periods[period][product]
+                T = len(arr)
+                arr = arr[np.arange(0, T, period)]
+                skew = scipy.stats.skew(arr)
+                kurto = scipy.stats.kurtosis(arr)
+                summary_text = f"Skew={skew:.2f}\n Kurto={kurto:.2f}"
+                # Plot the empirical histogram
+                sns.histplot(arr, kde=False, bins=100, stat='density', label='Empirical', ax=axes[i])
+
+                axes[i].set_title(product + "-" + signal_name)
+                axes[i].text(0.8, 0.9, summary_text, transform=axes[i].transAxes, ha='center', va='bottom',
+                        bbox={'facecolor': 'white', 'alpha': 0.8, 'pad': 10})
+            f.show()
+    if backtest:
+        print("------- Backtesting Without Cost")
+        for product in product_list:
+            dire_signal_list_with_period = [signal_name_format.format(period=period) for period in periods]
+            all_dates = helper.get_dates_list(product)
+            helper.parLapply(dire_signal_list_with_period, helper.par_generate_alldates_signal, date_list=all_dates, product=product, period=2048)
+                
+        with tqdm(total=len(product_list) * len(periods)) as bars:
+            for product in product_list:
+                spread = product_info[product]["spread"]
+                all_dates = np.array(helper.get_dates_list(product))
+                for period in periods:
+                    signal_name = signal_name_format.format(period=period)
+                    print("signal: {}, product:{}".format(signal_name, product))
+                    try:
+                        if product == "1000PEPEUSDT":
+                            split_str = "2023-06-10"
+                        else:
+                            split_str = "2023-04-01"
+                        evaluate_signal(signal_name, all_dates, product,
+                                                        period=None,
+                                                        split_str=split_str,
+                                                        tranct=0,
+                                                        max_spread=spread*1.8,
+                                                        atr_filter=0.01,  # 波动大于1%
+                                                        save_path="signal_result_with_atr")
+                    except Exception as e:
+                        traceback.print_exc()
+                        print("Error in {}: {}".format(product, signal_name))
+                        
+                    bars.update(1)
+    
+    
+    trades_signal_period = [signal_name_format.format(period=period) for period in periods]
+    results = get_signal_performance_result(trades_signal_period, "signal_result_with_atr", product_list, 1e-4, 1)
+
+    trend_res = results['trend.signal.stat']
+    reve_res = results["reverse.signal.stat"]
+    signal_trend_res = trend_res[['signal', 'trainSharpe']].set_index('signal')['trainSharpe']
+    signal_rever_res = reve_res[['signal', 'trainSharpe']].set_index('signal')['trainSharpe']
+
+    trend_signals = signal_trend_res[(signal_trend_res - signal_rever_res) > 0].index
+    reverse_signals = signal_trend_res[(signal_trend_res - signal_rever_res) < 0].index
+    nouse_signals = signal_trend_res[(signal_trend_res - signal_rever_res) == 0].index
+
+    print("#trend={}, #reverse={}, #nouse={}".format(len(trend_signals), len(reverse_signals), len(nouse_signals)))
+
+    merge_res = pd.concat([trend_res.loc[np.isin(trend_res['signal'], trend_signals)], 
+                        reve_res.loc[np.isin(reve_res['signal'], reverse_signals)]], 
+                        axis=0)
+
+    display(merge_res.sort_values(by='trainSharpe', ascending=False))

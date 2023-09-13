@@ -22,7 +22,7 @@ class foctor_range_pos_period(factor_template):
     ## then we subtract 0.5 from it
     ## then result is between -0.5 to 0.5
     ## and finally use ewma to take the average result over a range
-    factor_name = "range.pos.period"
+    factor_name = "range.pos.{period}"
 
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
@@ -39,7 +39,7 @@ class foctor_range_pos_period(factor_template):
 
 
 # class foctor_range_period(factor_template):
-#     factor_name = "range.period"
+#     factor_name = "range.{period}"
 
 #     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
@@ -50,7 +50,7 @@ class foctor_range_pos_period(factor_template):
 # ----------- volume factor template ----------------
 class foctor_buy_power_period(factor_template):
     # [0, 1]
-    factor_name = "buy_power.period"
+    factor_name = "buy_power.{period}"
 
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
@@ -61,20 +61,8 @@ class foctor_buy_power_period(factor_template):
         return buy_power.values
 
 
-class foctor_adl_period(factor_template):
-    # Accumulation Distribution Line
-    # 1. Money Flow Multiplier = [(Close  -  Low) - (High - Close)] /(High - Low)
-    # 2. Money Flow Volume = Money Flow Multiplier x Volume for the Period
-    # 3. ADL = Previous ADL + Current Period's Money Flow Volume
-    factor_name = "adl.period"
-    params = OrderedDict([("period", np.power(2, range(5, 12)))])
-
-    def formula(self, data, period):
-        raise NotImplementedError()
-
-
 class factor_adx_directional(factor_template):
-    factor_name = "adx.direc.1024.period"
+    factor_name = "adx.direc.1024.{period}"
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
     def formula(self, data, period):
@@ -97,7 +85,7 @@ class factor_adx_directional(factor_template):
 
 
 class factor_adx_directionalV2(factor_template):
-    factor_name = "adx.direc2.1024.period"
+    factor_name = "adx.direc2.1024.{period}"
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
     def formula(self, data, period):
@@ -125,11 +113,12 @@ class factor_adx_directionalV2(factor_template):
 class factor_rmi(factor_template):
     # evaluate relative momentum index
     # rang from [-1, 1]
-    factor_name = "rmi.period"
+    factor_name = "rmi.{period}"
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
     def formula(self, data, period):
         s = data["wpr"].diff(period)
+        s.fillna(0, inplace=True)
         up = s.copy()
         up[up <= 0] = 0
         dn = -s.copy()
@@ -144,7 +133,7 @@ class factor_rmi(factor_template):
 class factor_volume_advantage(factor_template):
     # evaluate the volume advantage
     # rang from [-1, 1]
-    factor_name = "volume.advantage.period"
+    factor_name = "volume.advantage.{period}"
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
     def formula(self, data, period):
@@ -161,23 +150,9 @@ class factor_volume_advantage(factor_template):
 
 
 class foctor_ma_diff_period(factor_template):
-    factor_name = "ma.dif.10.period"
+    factor_name = "ma.dif.10.{period}"
 
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
-
-    # def formula(self, data, period):
-    #     return zero_divide(
-    #         ewma(data["wpr"], round(period / 10), adjust=True)
-    #         - ewma(data["wpr"], period, adjust=True),
-    #         data["wpr"],
-    #     ).values
-
-    # def formula(self, data, period):
-    #     return zero_divide(
-    #         ewma(data["wpr"], round(period / 10), adjust=True)
-    #         - ewma(data["wpr"], period, adjust=True),
-    #         data["max." + str(period)] - data["min." + str(period)],
-    #     ).values
 
     def formula(self, data, period):
         res = zero_divide(
@@ -203,7 +178,7 @@ class foctor_nr_period(factor_template):
     ## so we use adjust=True
     ## but since there is avdivision, actually we don't need to use adjust=True
     ## they would be the same with or withour adjust=True
-    factor_name = "nr.period"
+    factor_name = "nr.{period}"
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
     def formula(self, data, period):
@@ -212,9 +187,27 @@ class foctor_nr_period(factor_template):
             ewma(data["ret"].abs(), period, adjust=True),
         ).values
 
+class foctor_ret_period(factor_template):
+    ## to calculate the normalized return
+    ## 3 parts: factor_name, params, formula
+    ## 2^[10:13]=(1024,2048,4096)
+    ## the idea is ret/|ret|
+    ## then over a period, we divided by period in numerator and denominator
+    ## (ret/period)/(|ret|/period)
+    ## then we use ewma(ret)/ewma(|ret|) instead of mean return
+    ## because calculate ewma is faster and easier
+    ## but the first period items may not be correct for ewma
+    ## so we use adjust=True
+    ## but since there is avdivision, actually we don't need to use adjust=True
+    ## they would be the same with or withour adjust=True
+    factor_name = "ret.{period}"
+    params = OrderedDict([("period", np.power(2, range(5, 12)))])
+
+    def formula(self, data, period):
+        return cum(data['ret'], period)
 
 class foctor_kdj_j_period(factor_template):
-    factor_name = "kdj.j.period"
+    factor_name = "kdj.j.{period}"
 
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
@@ -238,7 +231,7 @@ class foctor_kdj_j_period(factor_template):
 
 
 class foctor_kdj_k_period(factor_template):
-    factor_name = "kdj.k.period"
+    factor_name = "kdj.k.{period}"
 
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
@@ -267,7 +260,7 @@ class foctor_dbook_period(factor_template):
     ## then we add ewma as fitler to make it more continuous
     ## we hope the signals are continuous values
 
-    factor_name = "dbook.period"
+    factor_name = "dbook.{period}"
 
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
@@ -282,7 +275,7 @@ class foctor_dbook_period(factor_template):
 
 
 class foctor_order_book_speard_diff_period(factor_template):
-    factor_name = "dbook.spread.diff.period"
+    factor_name = "dbook.spread.diff.{period}"
 
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
@@ -305,7 +298,7 @@ class foctor_order_book_speard_diff_period(factor_template):
 
 
 class foctor_order_book_speard_period(factor_template):
-    factor_name = "dbook.spread.period"
+    factor_name = "dbook.spread.{period}"
 
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
@@ -319,40 +312,3 @@ class foctor_order_book_speard_period(factor_template):
 
         spread = (bids_qty - asks_qty) / (bids_qty + asks_qty)
         return ewma(spread, period, adjust=True)
-
-
-# 逐笔的因子
-class factor_trades_buy_power(factor_template):
-    factor_name = "trades.buy_power.period"
-
-    params = OrderedDict([("period", np.power(2, range(7, 12)))])
-
-    def formula(self, data, period):
-        N = data.shape[0]
-        q_size = period
-        trades = []
-        cum_n_trades = 0
-        cum_buy = 0
-        cum_sell = 0
-        trades_idx = data.columns.get_loc("trades")
-        buy_idx = data.columns.get_loc("active.buy.qty")
-        sell_idx = data.columns.get_loc("active.buy.qty")
-        value = data.values
-        signal = []
-        for i in range(N):
-            n_trade = value[i, trades_idx]
-            buy_amount = value[i, buy_idx]
-            sell_amount = value[i, sell_idx]
-            trades.append((n_trade, buy_amount, sell_amount))
-            cum_n_trades += n_trade
-            cum_buy += buy_amount
-            cum_sell += sell_amount
-            v = cum_buy / (cum_buy + cum_sell + 0.1)
-            signal.append(v)
-            while cum_n_trades > q_size and len(trades):
-                earliest_trade = trades.pop(0)
-                cum_n_trades -= earliest_trade[0]
-                cum_buy -= earliest_trade[1]
-                cum_sell -= earliest_trade[2]
-            
-        return np.asarray(signal)

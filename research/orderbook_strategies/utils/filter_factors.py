@@ -26,7 +26,7 @@ from research.orderbook_strategies.utils.helper import (
 # ----------- volatility factor template ----------------
 # must be positve
 class foctor_atr_period(factor_template):
-    factor_name = "atr.period"
+    factor_name = "atr.{period}"
 
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 
@@ -39,7 +39,7 @@ class foctor_atr_period(factor_template):
 
 class foctor_trend_index_period(factor_template):
     ## rolling trend index
-    factor_name = "trend.index.period"
+    factor_name = "trend.index.{period}"
 
     params = OrderedDict([("period", np.power(2, range(9, 12)))])
 
@@ -55,7 +55,7 @@ class foctor_trend_index_period(factor_template):
 
 class factor_adx(factor_template):
     # [0, 1]
-    factor_name = "adx.1024.period"
+    factor_name = "adx.1024.{period}"
     params = OrderedDict([("period", np.power(2, range(8, 12)))])
 
     def formula(self, data, period):
@@ -78,7 +78,7 @@ class factor_adx(factor_template):
 
 class factor_market_efficiency(factor_template):
     # [0, 1]
-    factor_name = "market_efficiency.period"
+    factor_name = "market_efficiency.{period}"
     params = OrderedDict([("period", np.power(2, range(8, 12)))])
 
     def formula(self, data, period):
@@ -91,7 +91,7 @@ class factor_market_efficiency(factor_template):
 
 
 class foctor_std_period(factor_template):
-    factor_name = "std.period"
+    factor_name = "std.{period}"
 
     params = OrderedDict([("period", np.power(2, range(5, 12)))])
 

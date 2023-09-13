@@ -22,7 +22,7 @@ from research.orderbook_strategies.utils.trades_factors import *
 # ----------- targets factor template ----------------
 # will be labels for the model
 class foctor_ret_period(factor_template):
-    factor_name = "ret.period"
+    factor_name = "ret.{period}"
 
     params = OrderedDict([("period", np.power(2, range(7, 12)))])
 
@@ -31,7 +31,7 @@ class foctor_ret_period(factor_template):
 
 
 class foctor_ret_period_004(factor_template):
-    factor_name = "ret.period.004"
+    factor_name = "ret.{period}.004"
 
     params = OrderedDict([("period", np.power(2, range(7, 12)))])
 
@@ -40,7 +40,7 @@ class foctor_ret_period_004(factor_template):
 
 
 class foctor_ret_period_002(factor_template):
-    factor_name = "ret.period.002"
+    factor_name = "ret.{period}.002"
 
     params = OrderedDict([("period", np.power(2, range(7, 12)))])
 
@@ -49,7 +49,7 @@ class foctor_ret_period_002(factor_template):
 
 
 class foctor_ret_period_001(factor_template):
-    factor_name = "ret.period.001"
+    factor_name = "ret.{period}.001"
 
     params = OrderedDict([("period", np.power(2, range(7, 12)))])
 

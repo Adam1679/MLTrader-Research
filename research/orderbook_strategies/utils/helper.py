@@ -204,9 +204,12 @@ def par_generate_alldates_signal(
         file_path.parent.mkdir(parents=True)
     if overwrite or not file_path.exists():
         all_signal = get_good_signal(product, signal_name, all_dates=date_list)
-        chosen = (np.arange(len(all_signal)) + 1) % period == 0
-        all_signal = all_signal[chosen]
-        save(all_signal, file_path)
+        if all_signal is not None:
+            chosen = (np.arange(len(all_signal)) + 1) % period == 0
+            all_signal = all_signal[chosen]
+            save(all_signal, file_path)
+        else:
+            print("error: all_signal is None for {} {}".format(product, signal_name))
 
 
 def auto_get_alldates_signal(signal_name, product):
@@ -294,19 +297,25 @@ def get_good_signal(
         res = datas[date_str].result()
         if res is not None:
             selected_data.append(res)
+    if len(selected_data) < len(selected_dates) / 2:
+        print("warning: too many None in selected_data. Only collect {}/{} dates".format(len(selected_data), len(selected_dates)))
+    if len(selected_data) == 0:
+        return None
     res = np.concatenate(selected_data, axis=0)
     save(res, file_name)
     return res
 
 
 def get_signal(product, signal_name, date_str, good=False) -> Optional[np.ndarray]:
-    assert isinstance(product, str)
+    assert isinstance(product, str) and product in product_info.keys()
     assert isinstance(signal_name, str)
     assert isinstance(date_str, str)
     files = find_files_without_suffix(SIGNAL_PATH / product / signal_name, date_str)
     if len(files) == 0:
         print("no file found for {} {} {}".format(product, signal_name, date_str))
         return None
+    if len(files) > 1:
+        print("warning: found too many files for {} {} {}: {}".format(product, signal_name, date_str, str(files)))
     S = load(SIGNAL_PATH / product / signal_name / files[0])
     assert S is not None, f"{SIGNAL_PATH / product / signal_name / files[0]} not found."
     if good:
@@ -337,6 +346,8 @@ def load(path: Path, columns: Optional[str] = None):
         if len(find_files) == 0:
             print("no file found for {}".format(path))
             return None
+        if len(find_files) > 1:
+            print("warning: found too many files for {}: {}".format(path, str(find_files)))
         path = find_files[0]
     try:
         if str(path).endswith(".pd_pkl"):
@@ -362,7 +373,7 @@ def save(data, path: Path, storage_format="pkl"):
     path = Path(path)
     try:
         if not path.parent.exists():
-            path.parent.mkdir(parents=True)
+            path.parent.mkdir(parents=True, exist_ok=True)
             print(f"create {path.parent}")
         if isinstance(data, pd.DataFrame) or isinstance(data, pd.Series):
             if storage_format == "pkl":

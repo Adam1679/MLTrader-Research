@@ -18,12 +18,27 @@ from research.orderbook_strategies.utils.helper import (
     htan,
 )
 
+class factor_orderflow_1(factor_template):
+    factor_name = "trade.orderflow.period"
+    params = OrderedDict([("period", np.power(2, range(10, 15)))])
 
+    def formula(self, data, period):
+        quote_qty = data["quantity"] * data["price"]
+        short_period = int(period * 0.382)
+        quote_qty = data["quantity"] * data["price"]
+        quote_qty_buy = pd.Series(np.where(data["is_buyer_maker"], quote_qty, 0), index=data.index)
+        quote_qty_sell = pd.Series(np.where(data["is_buyer_maker"], 0, quote_qty), index=data.index)
+        buy_ratio = cum(quote_qty_buy, short_period) / cum(quote_qty_buy, period)
+        short_ratio = cum(quote_qty_sell, short_period) / cum(quote_qty_sell, period)
+        ratio = np.where(buy_ratio > short_ratio, buy_ratio, -short_ratio)
+        ratio = htan(ratio)
+        return ratio
+    
 class factor_last_buy_value_ratio(factor_template):
 
     factor_name = "trade.buy_power.period"
 
-    params = OrderedDict([("period", np.power(2, range(5, 10)))])
+    params = OrderedDict([("period", np.power(2, range(10, 15)))])
 
     def formula(self, data, period):
         quote_qty = data["quantity"] * data["price"]
@@ -32,7 +47,21 @@ class factor_last_buy_value_ratio(factor_template):
         cum_buy = cum(quote_qty_buy, period)
         cum_sell = cum(quote_qty_sell, period)
         buy_ratio = cum_buy / (cum_sell + cum_buy)
-        return buy_ratio.values
+        return buy_ratio * 2 - 1
+    
+class factor_last_buy_power_sign_ratio(factor_template):
+
+    factor_name = "trade.buy_power_sign.period"
+
+    params = OrderedDict([("period", np.power(2, range(10, 15)))])
+
+    def formula(self, data, period):
+        quote_qty = data["quantity"] * data["price"]
+        quote_qty_buy = pd.Series(np.where(data["is_buyer_maker"], quote_qty, 0), index=data.index)
+        quote_qty_sell = pd.Series(np.where(data["is_buyer_maker"], 0, quote_qty), index=data.index)
+        cum_buy = cum(quote_qty_buy, 100)
+        cum_sell = cum(quote_qty_sell, 100)
+        return ewma(np.sign(cum_buy - cum_sell), period, adjust=True).values
     
 # directional
 # range [-1, 1]
@@ -53,7 +82,7 @@ class factor_last_buy_count_ratio(factor_template):
 
 class factor_large_trade_ratio(factor_template):
 
-    factor_name = "trade.buy_power.period"
+    factor_name = "trade.buy_power.large.period"
 
     params = OrderedDict([("period", np.power(2, range(10, 15)))])
 
@@ -70,21 +99,22 @@ class factor_large_trade_ratio(factor_template):
         buy_ratio = 2 * cum_buy / (cum_sell + cum_buy) - 1
         return buy_ratio.values
     
-class factor_doublebuy_value_ratio(factor_template):
+# # 垃圾因子
+# class factor_doublebuy_value_ratio(factor_template):
 
-    factor_name = "trade.doublebuy.value.ratio.period"
+#     factor_name = "trade.doublebuy.value.ratio.period"
 
-    params = OrderedDict([("period", np.power(2, range(10, 15)))])
+#     params = OrderedDict([("period", np.power(2, range(10, 15)))])
 
-    def formula(self, data, period):
-        quote_qty = data["quantity"] * data["price"]
-        quote_qty_buy = pd.Series(np.where(data["is_buyer_maker"], quote_qty, 0), index=data.index)
-        quote_qty_sell = pd.Series(np.where(data["is_buyer_maker"], 0, quote_qty), index=data.index)
-        buy_diff = ewma(quote_qty_buy, period / 10) - ewma(quote_qty_buy, period)
-        sell_diff = ewma(quote_qty_sell, period / 10) - ewma(quote_qty_sell, period)
-        trade_mean = ewma(quote_qty, period)
-        ratio = (buy_diff - sell_diff) / trade_mean
-        return np.asarray(ratio)
+#     def formula(self, data, period):
+#         quote_qty = data["quantity"] * data["price"]
+#         quote_qty_buy = pd.Series(np.where(data["is_buyer_maker"], quote_qty, 0), index=data.index)
+#         quote_qty_sell = pd.Series(np.where(data["is_buyer_maker"], 0, quote_qty), index=data.index)
+#         buy_diff = ewma(quote_qty_buy, period / 10) - ewma(quote_qty_buy, period)
+#         sell_diff = ewma(quote_qty_sell, period / 10) - ewma(quote_qty_sell, period)
+#         trade_mean = ewma(quote_qty, period)
+#         ratio = (buy_diff - sell_diff) / trade_mean
+#         return np.asarray(ratio)
     
 class factor_last_buy_value_ratio_cross_more_positions(factor_template):
 
@@ -98,6 +128,6 @@ class factor_last_buy_value_ratio_cross_more_positions(factor_template):
         quote_qty_sell = pd.Series(np.where(data["is_buyer_maker"], 0, quote_qty), index=data.index)
         cum_buy = cum(quote_qty_buy, period)
         cum_sell = cum(quote_qty_sell, period)
-        buy_ratio = cum_buy / (cum_sell + cum_buy)
+        buy_ratio = 2 * cum_buy / (cum_sell + cum_buy) - 1
         buy_ratio_with_state = buy_ratio * data["more_position.12"]
-        return np.asarray(buy_ratio_with_state)
+        return buy_ratio_with_state
